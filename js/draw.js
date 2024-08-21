@@ -24,14 +24,19 @@ export class HandleCanvas {
     deltaTextY = 400;
     // below this width and deltaTextY, test whether close to succ 1, if not  skip calc ord
     trySkipWidth = 800;
+    // if this draw has show text "0", this will set true
+    hasZero = false;
     // coord: Chunk[] = [{ ord: { op: "0Y", val: [1, 5] }, preOrd: 0, preOrdDens: 1, min: 0, max: 1, dens: 1 }];
     // coord: Chunk[] = [{ ord: { op: "i", val: [] }, preOrd: 0, preOrdDens: 1, min: 0, max: 1, dens: 1 }];
-    coord = window.location.search === "?0Y" ? [{ ord: { op: "0Y", val: [1, 5] }, preOrd: 0, preOrdDens: 1, min: 0, max: 1, dens: 1 }] : [{ "ord": { "op": "p", "val": [{ "op": "*", "val": [{ "op": "o", "val": [1] }, Infinity] }, 0] }, "preOrd": 0, "dens": 197.38334721841863, "max": 4476146.566031095, "min": 960, "preOrdDens": 1.871991762259063, "lastMax": 1440000000000000, "lastMin": 960, "lastDens": 369.5 }, { "ord": { "op": "i", "val": [] }, "preOrd": 0, "dens": 1, "max": 1, "min": 0, "preOrdDens": 1 }];
+    // coord: Chunk[] = window.location.search === "?0Y" ? [{ ord: { op: "0Y", val: [1, 5] }, preOrd: 0, preOrdDens: 1, min: 0, max: 1, dens: 1 }] : [{ "ord": { "op": "p", "val": [{ "op": "*", "val": [{ "op": "o", "val": [1] }, Infinity] }, 0] }, "preOrd": 0, "dens": 197.38334721841863, "max": 4476146.566031095, "min": 960, "preOrdDens": 1.871991762259063, "lastMax": 1440000000000000, "lastMin": 960, "lastDens": 369.5 }, { "ord": { "op": "i", "val": [] }, "preOrd": 0, "dens": 1, "max": 1, "min": 0, "preOrdDens": 1 }]
+    coord = window.location.search === "?0Y" ? [{ ord: { op: "0Y", val: [1, 5] }, preOrd: 0, preOrdDens: 1, min: 0, max: 1, dens: 1 }] : null;
     changeCoord = null;
     labels = [];
     selected = null;
     onsave;
-    add1ord = [psis(os(Infinity)), psis(pows(os(), Infinity)), psis(muls(os(), Infinity)), psis(os(2))];
+    add1ord = [{ op: "i", val: [0] }, psis(os(Infinity)), psis(pows(os(), Infinity)), pows(Infinity, Infinity)];
+    add0ord = [psis(os(os())), psis(os(2)), psis(pows(os(), os())), psis(os()), psis(pows(os(), 2)), psis(muls(os(), Infinity)), Infinity];
+    // add1ord = [psis(os(Infinity)), psis(pows(os(), Infinity)), psis(muls(os(), Infinity)), psis(os(2)),psis({op:"i",val:[0]})];
     init() {
         const resize = () => {
             const width = window.innerWidth * window.devicePixelRatio;
@@ -228,6 +233,8 @@ export class HandleCanvas {
         loop();
     }
     draw() {
+        if (!this.coord)
+            return;
         this.onsave();
         const ct = this.canvas.getContext("2d");
         ct.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -244,12 +251,15 @@ export class HandleCanvas {
         this.totalDrawed = 0;
         this.labels = [];
         this.changeCoord = null;
+        this.hasZero = false;
         const coord = this.coord[0];
         // draw fractal
         this.drawOmega(ct, coord.ord, coord.preOrd, coord.preOrdDens * this.range[2], this.range[0], this.range[1], this.range[2], this.maxDepth);
         // draw pred
-        if (this.range[0] > 0 && coord.preOrdDens)
+        if (this.range[0] > 0 && coord.preOrdDens) {
+            // if (coord.preOrd !== 0 )
             this.drawOrd(ct, this.range[0], coord.preOrdDens * this.range[2], printVal(coord.preOrd), coord.preOrd);
+        }
         ct.stroke();
         // draw selected
         if (this.selected) {
@@ -349,7 +359,7 @@ export class HandleCanvas {
         if (max < this.canvas.width)
             this.drawOrd(ct, max, dens, label.length * 5 < width + 5 ? label : "", ord);
         let cursor = min; // prev drawed pos
-        let shift = ord ? ord.op === "0Y" ? -1 : this.add1ord.find(e => cmp(e, ord) === 0) ? 1 : 0 : 0;
+        let shift = ord ? ord.op === "0Y" ? -1 : this.add1ord.find(e => cmp(e, ord) === 0) ? 1 : this.add0ord.find(e => cmp(e, ord) === 0) ? 0 : -1 : 0;
         let findingShift = true;
         for (let n = 1; n < this.maxIteration; n++) {
             let subOrd = null;
@@ -415,6 +425,10 @@ export class HandleCanvas {
                         else {
                             break;
                         }
+                        if (nshift > 10) {
+                            console.error(printVal(preOrd), printVal(subsub));
+                            break;
+                        }
                     }
                     sub = subsub;
                 }
@@ -422,12 +436,21 @@ export class HandleCanvas {
             // draw subord
             const startPos = npos - rescaleDeltaX[n] * width;
             this.drawOmega(ct, !sparse ? null : subOrd, preOrd, preOrdDens, startPos, npos, nd, it - 1);
+            if (subOrd?.val && subOrd?.val[1]?.val && subOrd?.val[1]?.op === "p" && subOrd?.val[1]?.val[0] === Infinity && subOrd?.val[1]?.val[1] === 0) {
+                console.log("oma");
+            }
             preOrd = subOrd;
             preOrdDens = nd;
             cursor = npos;
         }
     }
     drawOrd(ct, pos, dens, label, ord) {
+        if (this.hasZero && ord === 0) {
+            return; // don't draw 0 repeatly
+        }
+        if (!this.hasZero && ord === 0) {
+            this.hasZero = true;
+        }
         this.totalDrawed++;
         if (dens < this.maxDens) {
             if (dens > this.secondDens)
@@ -442,15 +465,39 @@ export class HandleCanvas {
         ct.lineTo(pos, this.canvas.height / 2 + dens);
         if (label === "")
             return;
-        label = printVal(ord);
+        label = printVal(ord, "bocf");
         const size = (dens / (label.length + 1) + 8) * 0.8;
         if (label.length > 200)
             label = label.slice(0, 96) + " .... " + label.slice(-96);
-        ct.font = Math.round(size) + "px sans-serif";
+        const font = Math.round(size) + "px sans-serif";
+        const smallfont = Math.round(size * 0.4) + "px sans-serif";
+        ct.font = font;
         const hw = ct.measureText(label).width / 2;
+        let label2 = printVal(ord, "veblen");
+        let hw2 = ct.measureText(label2).width / 2;
+        const label3 = printVal(ord, "mocf");
+        if (label3 !== label) {
+            const hw3 = ct.measureText(label3).width / 2;
+            if (label2 === label) {
+                label2 = label3;
+                ct.font = smallfont;
+                hw2 = hw3;
+                ct.fillText("mocf", pos - hw3, this.canvas.height / 2 + dens + 60 + size * 1.1);
+                ct.font = font;
+            }
+            else {
+                ct.font = smallfont;
+                ct.fillText("mocf", pos - hw3, this.canvas.height / 2 - dens - 60 + size * 2.1);
+                ct.font = font;
+                ct.fillText(label3, pos - hw3, this.canvas.height / 2 - dens - 60 + size * 1.8);
+            }
+        }
+        if (label3 !== label) {
+            ct.font = smallfont;
+            ct.fillText("bocf", pos - hw, this.canvas.height / 2 - dens - 60 + size * 0.3);
+            ct.font = font;
+        }
         ct.fillText(label, pos - hw, this.canvas.height / 2 - dens - 60);
-        const label2 = printVal(ord, "veblen");
-        const hw2 = ct.measureText(label2).width / 2;
         ct.fillText(label2, pos - hw2, this.canvas.height / 2 + dens + 60 + size * 0.8);
         if (ord || ord === 0)
             this.labels.push({ pos, ord, text: label });

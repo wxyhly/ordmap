@@ -1,4 +1,4 @@
-import { stringify, adds, clone, cmp, muls, os, pows, psis } from "./bocf.js";
+import { adds, clone, cmp, muls, os, pows, psis } from "./bocf.js";
 const pO = psis(os());
 const pOxx3 = psis(pows(os(), pows(os(), pows(os(), os()))));
 const e0 = { op: "v", val: [0, 1] };
@@ -317,6 +317,29 @@ export function cmpv(a, b) {
     if (b.op === "i")
         return -1;
     if (a.op === "i")
+        return 1;
+    if (a.op === "p" && b.op === "p") {
+        const res = cmp(a.val[1], b.val[1]);
+        if (res !== 0)
+            return res;
+        return cmp(a.val[0], b.val[0]);
+    }
+    if (a.op === "p") {
+        // remained b must be o
+        // p_0 < o_1, o_1 < p_1(.) < o2  (ps. : .>=o2)
+        const res = cmpv(a.val[1], b.val[0]);
+        return res === -1 ? -1 : 1;
+    }
+    if (b.op === "p") {
+        const res = cmpv(b.val[1], a.val[0]);
+        return res === -1 ? 1 : -1;
+    }
+    // cmp o_a and o_b
+    if (a.op === "o" && b.op === "o")
+        return cmp(a.val[0], b.val[0]);
+    if (b.op === "o")
+        return -1;
+    if (a.op === "o")
         return 1;
     if (a.op === "@" && b.op === "@") {
         a.op = "v@";
@@ -697,10 +720,14 @@ function vget(v, idx) {
     return 0;
 }
 // console.log(stringify(powv(Infinity, addv(e0, 1))));
-const ooo1 = pows(os(), pows(os(), adds(muls(os(), Infinity), Infinity)));
-console.log(stringify(bocf2veblen(psis(adds(ooo1, pows(os(), psis(ooo1)), muls(psis(ooo1), 2)
-// psis(pows(os(), pows(os(), muls(os(), Infinity)))),
-)))));
+// const ooo1 = pows(os(), pows(os(), adds(muls(os(), Infinity), Infinity)));
+// console.log(stringify(bocf2veblen(
+//     psis(adds(
+//         ooo1, pows(os(), psis(ooo1)),
+//         muls(psis(ooo1), 2)
+//         // psis(pows(os(), pows(os(), muls(os(), Infinity)))),
+//     ))
+// )));
 // console.log(stringify(bocf2veblen(
 //     psis(pows(os(), pows(os(), adds(muls(os(),Infinity),os()))))
 // )));
@@ -711,5 +738,5 @@ console.log(stringify(bocf2veblen(psis(adds(ooo1, pows(os(), psis(ooo1)), muls(p
 //     psis(adds(pows(os(), 3), pows(os(), 2)))
 // )));
 // console.log(cmpv({ op: "v@", val: [1, Infinity] }, { op: "v@", val: [1, Infinity] }));
-console.log(cmpv({ op: "v@", val: [1, { op: "@", val: [1, 1] }] }, { op: "v@", val: [1, { op: "@", val: [Infinity, Infinity] }] }));
+// console.log(cmpv({ op: "v@", val: [1, { op: "@", val: [1, 1] }] }, { op: "v@", val: [1, { op: "@", val: [Infinity, Infinity] }] }));
 //# sourceMappingURL=veblen.js.map

@@ -1,8 +1,8 @@
+import { bocf2mocf } from "./mocf.js";
 import { bocf2veblen } from "./veblen.js";
 import { expand0Y } from "./yseq.js";
-import { yseq2bocf } from "./yseq2ocf.js";
 export function printVal(bocf, mode) {
-    return (mode === "veblen" ? bocf.op === "0Ysooooor" ? stringify(yseq2bocf(bocf.val)) : stringify(bocf2veblen(bocf)) : stringify(bocf)).replaceAll("Ψ_{0}", "Ψ").replaceAll("Ω_{1}", "Ω").replaceAll("_{0}", "₀").replaceAll("_{1}", "₁").replaceAll("_{2}", "₂").replaceAll("_{3}", "₃").replaceAll("_{4}", "₄").replaceAll("_{5}", "₅").replaceAll("^{2}", "²").replaceAll("^{3}", "³").replaceAll("^{4}", "⁴").replaceAll("^{5}", "⁵").replaceAll(/\{(.)\}/g, "$1").replaceAll(/([^0-9])\*/g, "$1");
+    return (mode === "mocf" ? stringify(bocf2mocf(bocf)) : mode === "veblen" ? stringify(bocf2veblen(bocf)) : stringify(bocf)).replaceAll("Ψ_{0}", "Ψ").replaceAll("Ω_{1}", "Ω").replaceAll("_{0}", "₀").replaceAll("_{1}", "₁").replaceAll("_{2}", "₂").replaceAll("_{3}", "₃").replaceAll("_{4}", "₄").replaceAll("_{5}", "₅").replaceAll("^{2}", "²").replaceAll("^{3}", "³").replaceAll("^{4}", "⁴").replaceAll("^{5}", "⁵").replaceAll(/\{(.)\}/g, "$1").replaceAll(/([^0-9])\*/g, "$1");
 }
 export function stringify(bocf) {
     if (bocf === Infinity)
@@ -16,7 +16,7 @@ export function stringify(bocf) {
     if (bocf.op === "+")
         return bocf.val.map(v => stringify(v)).join("+");
     if (bocf.op === "*")
-        return bocf.val.map(v => stringify(v)).join("*");
+        return bocf.val.map(v => v.op === "+" ? "(" + stringify(v) + ")" : stringify(v)).join("*");
     if (bocf.op === "^") {
         const bracket = bocf.val[0].op === "*" || bocf.val[0].op === "_";
         return (bracket ? "(" : "") + stringify(bocf.val[0]) + (bracket ? ")" : "") + "^{" + stringify(bocf.val[1]) + "}";
@@ -101,6 +101,8 @@ export function expand(bocf, n) {
         const pre = pred(mulval);
         if (pre === false)
             return false;
+        if (pre === null)
+            return null;
         return expand(adds(muls(...valsmul, pre), muls(...valsmul)), n);
     }
     if (bocf.op === "^") {
@@ -112,6 +114,8 @@ export function expand(bocf, n) {
         if (res !== null)
             return pows(valsmul, res);
         const pre = pred(mulval);
+        if (pre === null)
+            return null;
         if (pre === false)
             return false;
         return expand(muls(pows(valsmul, pre), valsmul), n);
@@ -119,6 +123,8 @@ export function expand(bocf, n) {
     if (bocf.op === "o") {
         const lim = expand(bocf.val[0], n);
         if (lim !== null && lim !== false) {
+            if (lim === 0)
+                return 0;
             return os(lim);
         }
         return false;
@@ -152,6 +158,9 @@ export function expand(bocf, n) {
         }
         // O^O^O+O^2 => O^O^O+O*X
         let template = findFixpoint(O);
+        if (cmp(_fixPointCache, idx) === -1) {
+            return null; // can't expand p_1(#+O) in this layer
+        }
         let val = n ? clone(template) : template;
         template = psis(template, _fixPointCache);
         for (let i = 1; i < n + 1; i++) {
@@ -237,7 +246,7 @@ function findFixpoint(O) {
     const pre = pred(inner);
     if (O.op === "*") {
         if (pre !== null && pre !== false) {
-            return findFixpoint(adds(muls(...remained, pre), ...remained));
+            return findFixpoint(adds(muls(...remained, pre), muls(...remained)));
         }
         return muls(...remained, findFixpoint(inner));
     }
@@ -247,7 +256,9 @@ function findFixpoint(O) {
         }
         return pows(...remained, findFixpoint(inner));
     }
-    // O.op can't be phi, since it is lim
+    if (O.op === "p") {
+        return psis(findFixpoint(O.val[0]), O.val[1]);
+    }
 }
 export function os(val) {
     if (val === 0)
@@ -259,12 +270,18 @@ export function psis(val, ord = 0) {
     if (val?.op === "o") {
         const res = cmp(ord, val.val[0]);
         if (res === 1) {
+            // p_2(O) = O_2 O?
             return muls(os(ord), val);
         }
         if (res === 0) {
+            // p_1(O) = O_1^2?
             return pows(os(ord), 2);
         }
     }
+    if (ord === 0 && cmp(val, os()) === -1)
+        return pows(Infinity, val);
+    if (cmp(val, os(ord)) === -1)
+        return 0;
     return { op: "p", val: [val, ord] };
 }
 export function pows(...val) {
@@ -384,9 +401,11 @@ function printValList(ord, n) {
             break;
         console.log(printVal(e));
     }
+    console.log(printVal(ord));
+    console.log("====");
 }
 function iterativeList(ord, n) {
-    for (let i = 0; i < 1000; i++) {
+    for (let i = 0; i < 10; i++) {
         const e = expand(ord, n);
         if (e === null || e === false)
             break;
@@ -394,6 +413,12 @@ function iterativeList(ord, n) {
         ord = e;
     }
 }
-// printValList(psis(pows(os(Infinity), os(2))), 5);
-printVal(adds(psis(os()), 1));
+// printValList(psis(adds(pows(os(2),2), psis(os(2), 1))), 4);
+// printValList(psis(muls(pows(os(2),2), 2)), 4);
+// iterativeList(expand(psis(muls(pows(os(2),2), 2)),1)as BOCF, 1);
+// printValList({"op":"+","val":[{"op":"p","val":[{"op":"*","val":[{"op":"o","val":[Infinity]},2]},0]},{"op":"p","val":[{"op":"o","val":[Infinity]},0]}]}, 4);
+// printValList({ "op": "p", "val": [{ "op": "^", "val": [{ "op": "o", "val": [Infinity] }, { "op": "p", "val": [{ "op": "^", "val": [{ "op": "o", "val": [2] }, { "op": "^", "val": [{ "op": "o", "val": [1] }, { "op": "o", "val": [1] }] }] }, 1] }] }, 0] }, 4);
+// iterativeList(expand(psis(muls(pows(os(1),2), 2)),1)as BOCF, 1);
+// printValList(psis(adds(os(2), psis(adds(os(2), os()), 1))), 4);
+// printVal(adds(psis(os()), 1));
 //# sourceMappingURL=bocf.js.map
